@@ -1,10 +1,10 @@
-# Playground: Gradle
+# Common Expression Language
 
-<!-- When using the Playground to bootstrap a project, replace this by your project description. -->
-This a template to easily bootstrap your projects.
+Kotlin Multiplatform implementation of [CEL, the Common Expression Language](https://cel.dev).
 
-> This project is part of the OpenSavvy Playground.
-> To learn more, visit [this page](docs/playground/README.md).
+> Common Expression Language (CEL) is an expression language that’s fast, portable, and safe to execute in performance-critical applications. CEL is designed to be embedded in an application, with application-specific extensions, and is ideal for extending declarative configurations that your applications might already use.
+>
+> Use CEL for things like list filters for API calls, validation constraints on protocol buffers, and authorization rules for API requests.
 
 ## License
 
