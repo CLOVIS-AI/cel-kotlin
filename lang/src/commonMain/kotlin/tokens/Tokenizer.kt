@@ -17,6 +17,8 @@
 package opensavvy.cel.lang.tokens
 
 import arrow.core.raise.Raise
+import arrow.core.raise.either
+import arrow.core.raise.ensure
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 
@@ -31,6 +33,43 @@ class Tokenizer(
 	constructor(source: ByteArray) : this(Buffer().apply { write(source) })
 
 	constructor(source: String) : this(source.encodeToByteArray())
+
+	private val whitespaceCharacters = arrayOf(
+		' '.code,
+		'\t'.code,
+		'\n'.code,
+		0xC, // '\f'
+		'\r'.code,
+	)
+
+	private fun skipWhitespace() {
+		var whitespaceCounter: Long = 0
+
+		val peek = source.peek()
+		while (!peek.exhausted() && peek.readByte().toInt() in whitespaceCharacters) {
+			whitespaceCounter++
+		}
+
+		if (whitespaceCounter > 0) {
+			source.skip(whitespaceCounter)
+		}
+	}
+
+	private fun continuesWith(text: Char): Boolean =
+		source.request(1) && source.peek().readByte().toInt() == text.code
+
+	private fun continuesWith(text: String): Boolean {
+		if (!source.request(text.length.toLong()))
+			return false
+
+		val source = source.peek()
+		for (char in text) {
+			if (char.code != source.readByte().toInt())
+				return false
+		}
+
+		return true
+	}
 
 	fun Raise<Failure>.readBool(): Token.Bool {
 		TODO()
@@ -48,8 +87,82 @@ class Tokenizer(
 		TODO()
 	}
 
+	private fun canReadInteger(): Boolean {
+		skipWhitespace()
+		val source = source.peek()
+
+		if (!source.request(1))
+			return false
+
+		// Negative value?
+		var next = source.readByte().toInt()
+		if (next == '-'.code) {
+			if (!source.request(1))
+				return false
+			next = source.readByte().toInt()
+		}
+
+		// Hexadecimal check
+		var isHexadecimal = false
+		if (source.request(1)) {
+			val after = source.readByte().toInt()
+
+			if (next == '0'.code && after == 'x'.code) {
+				isHexadecimal = true
+
+				if (!source.request(1))
+					return false
+				next = source.readByte().toInt()
+			}
+		}
+
+		return (!isHexadecimal && next in '0'.code..'9'.code) ||
+			(isHexadecimal && (next in '0'.code..'9'.code || next in 'a'.code..'f'.code || next in 'A'.code..'F'.code))
+	}
+
 	fun Raise<Failure>.readInteger(): Token.Integer {
-		TODO()
+		skipWhitespace()
+
+		val isNegative = continuesWith('-')
+		if (isNegative)
+			source.skip(1) // Skip the '-'
+
+		ensure(source.request(1)) { Failure.Exhausted(Token.Integer) }
+
+		val isHexadecimal = continuesWith("0x")
+		if (isHexadecimal) {
+			source.skip(2)
+		}
+
+		var read: Long = 0
+		var readAtLeastOne = false
+
+		while (source.request(1)) {
+			val next = source.readByte()
+
+			if (!isHexadecimal && next in ('0'.code)..('9'.code)) {
+				readAtLeastOne = true
+				read *= 10
+				read += next - '0'.code
+			} else if (isHexadecimal && next in ('0'.code)..('9'.code)) {
+				readAtLeastOne = true
+				read *= 16
+				read += next - '0'.code
+			} else if (isHexadecimal && next in ('a'.code)..('f'.code)) {
+				readAtLeastOne = true
+				read *= 16
+				read += next - 'a'.code + 10
+			} else if (isHexadecimal && next in ('A'.code)..('F'.code)) {
+				readAtLeastOne = true
+				read *= 16
+				read += next - 'A'.code + 10
+			} else {
+				break
+			}
+		}
+
+		ensure(readAtLeastOne) { Failure.WrongTokenType(Token.Integer) }
+		return Token.Integer(if (isNegative) -read else read)
 	}
 
 	fun Raise<Failure>.readKeyword(): Token.Keyword {
@@ -72,7 +185,17 @@ class Tokenizer(
 	 * Returns `true` if the next token is of type [type].
 	 */
 	fun <T : Token> canRead(type: TokenType.Leaf<T>): Boolean {
-		TODO()
+		return when (type) {
+			Token.Bool.Companion -> TODO()
+			Token.Bytes.Companion -> TODO()
+			Token.Decimal.Companion -> TODO()
+			Token.Identifier.Companion -> TODO()
+			Token.Integer.Companion -> canReadInteger()
+			Token.Keyword.Companion -> TODO()
+			Token.Null -> TODO()
+			Token.Text.Companion -> TODO()
+			Token.UnsignedInteger.Companion -> TODO()
+		}
 	}
 
 	/**
@@ -98,7 +221,10 @@ class Tokenizer(
 	 * Returns `null` if the source's end has been reached.
 	 */
 	fun read(): Token? {
-		TODO()
+		if (canReadInteger())
+			return either { readInteger() }.getOrNull()
+
+		return null
 	}
 
 	/**
@@ -110,10 +236,16 @@ class Tokenizer(
 
 		data class WrongTokenType(
 			val expected: TokenType<*>,
-			val read: String,
 		) : Failure {
 
-			override fun toString() = "Attempted to read token $expected but read '$read'"
+			override fun toString() = "Attempted to read token $expected but read an incompatible value"
+		}
+
+		data class Exhausted(
+			val expected: TokenType<*>,
+		) : Failure {
+
+			override fun toString(): String = "Reached the end of the stream while trying to read a $expected"
 		}
 	}
 }
