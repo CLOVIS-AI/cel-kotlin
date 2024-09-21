@@ -1,9 +1,17 @@
 # List of dependencies of the project
 
 [versions]
+kotlinx-io = "0.5.4"     # https://github.com/Kotlin/kotlinx-io/releases
+arrow = "1.2.4"          # https://github.com/arrow-kt/arrow/releases
+prepared = "1.5.0"       # https://gitlab.com/opensavvy/groundwork/prepared/-/releases
 
 [plugins]
 
 [libraries]
+kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
+arrow = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
+prepared = { module = "dev.opensavvy.prepared:runner-kotest", version.ref = "prepared" }
+prepared-arrow = { module = "dev.opensavvy.prepared:compat-arrow", version.ref = "prepared" }
+prepared-parameterize = { module = "dev.opensavvy.prepared:compat-parameterize", version.ref = "prepared" }
 
 [bundles]
