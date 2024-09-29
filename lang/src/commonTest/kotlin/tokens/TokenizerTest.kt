@@ -132,8 +132,67 @@ private fun SuiteDsl.integers() = suite("Integers") {
 	}
 }
 
+private fun SuiteDsl.booleans() = suite("Booleans") {
+	suite("Tokenize") {
+		val cases = listOf(
+			"true" to true,
+			"false" to false,
+			"   true  " to true,
+			"       false    " to false,
+		)
+
+		for ((input, expected) in cases) {
+			test("'$input' can be read as a boolean") {
+				check(Tokenizer(input).canRead(Token.Bool))
+			}
+
+			test("'$input' should be read as '$expected'") {
+				failOnRaise {
+					with(Tokenizer(input)) {
+						check(readBool() == Token.Bool(expected))
+					}
+				}
+			}
+
+			test("'$input' should be smartly read to a boolean") {
+				check(Tokenizer(input).read() == Token.Bool(expected))
+			}
+		}
+
+		val failedCases: List<Pair<String, Tokenizer.Failure>> = listOf(
+			"'true'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"\"true\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"'false'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"\"false\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"1" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+			"0x0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		)
+
+		for ((input, expected) in failedCases) {
+			test("'$input' cannot be read as a boolean") {
+				check(!Tokenizer(input).canRead(Token.Bool))
+			}
+
+			test("'$input' should fail with $expected") {
+				assertRaises(expected) {
+					with(Tokenizer(input)) {
+						readBool()
+					}
+				}
+			}
+
+			test("'$input' should be not be read to an integer") {
+				check(Tokenizer(input).read() !is Token.Bool)
+			}
+		}
+	}
+}
+
 @Suppress("unused")
 class TokenizerTest : PreparedSpec({
 	identifiers()
 	integers()
+	booleans()
 })

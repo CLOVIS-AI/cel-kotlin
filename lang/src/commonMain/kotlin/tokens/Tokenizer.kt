@@ -71,8 +71,27 @@ class Tokenizer(
 		return true
 	}
 
+	private fun canReadBool(): Boolean {
+		skipWhitespace()
+		return continuesWith("true") || continuesWith("false")
+	}
+
 	fun Raise<Failure>.readBool(): Token.Bool {
-		TODO()
+		skipWhitespace()
+
+		return when {
+			continuesWith("true") -> {
+				source.skip(4)
+				Token.Bool(true)
+			}
+
+			continuesWith("false") -> {
+				source.skip(5)
+				Token.Bool(false)
+			}
+
+			else -> raise(Failure.WrongTokenType(Token.Bool))
+		}
 	}
 
 	fun Raise<Failure>.readBytes(): Token.Bytes {
@@ -186,7 +205,7 @@ class Tokenizer(
 	 */
 	fun <T : Token> canRead(type: TokenType.Leaf<T>): Boolean {
 		return when (type) {
-			Token.Bool.Companion -> TODO()
+			Token.Bool.Companion -> canReadBool()
 			Token.Bytes.Companion -> TODO()
 			Token.Decimal.Companion -> TODO()
 			Token.Identifier.Companion -> TODO()
@@ -221,6 +240,9 @@ class Tokenizer(
 	 * Returns `null` if the source's end has been reached.
 	 */
 	fun read(): Token? {
+		if (canReadBool())
+			return either { readBool() }.getOrNull()
+
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()
 
