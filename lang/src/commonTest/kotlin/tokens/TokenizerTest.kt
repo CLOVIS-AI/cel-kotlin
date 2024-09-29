@@ -20,11 +20,76 @@ package opensavvy.cel.lang.tokens
 
 import arrow.core.raise.ExperimentalTraceApi
 import io.kotest.assertions.throwables.shouldThrow
-import opensavvy.cel.lang.tokens.Token.Null
 import opensavvy.prepared.compat.arrow.core.assertRaises
 import opensavvy.prepared.compat.arrow.core.failOnRaise
 import opensavvy.prepared.runner.kotest.PreparedSpec
 import opensavvy.prepared.suite.SuiteDsl
+
+// region Utilities
+
+private inline fun <reified K, reified T : Token<K>> SuiteDsl.validTokensFor(type: TokenType.Leaf<T>, vararg data: Pair<String, K>) {
+	for (expected in data.map { it.second }.distinct()) {
+		test("'$expected' is a valid value for '$type'") {
+			try {
+				when (type) {
+					Token.Bool.Companion -> Token.Bool(expected as Boolean)
+					Token.Bytes.Companion -> Token.Bytes(expected as ByteArray)
+					Token.Decimal.Companion -> Token.Decimal(expected as Double)
+					Token.Identifier.Companion -> Token.Identifier(expected as String)
+					Token.Integer.Companion -> Token.Integer(expected as Long)
+					Token.Keyword.Companion -> Token.Keyword.valueOf(expected as String)
+					Token.Null -> check(expected == null)
+					Token.Text.Companion -> Token.Text(expected as String)
+					Token.UnsignedInteger.Companion -> Token.UnsignedInteger(expected as ULong)
+				}
+			} catch (e: Throwable) {
+				throw AssertionError("Error while attempting to confirm whether '$expected' is a valid value for token type $type", e)
+			}
+		}
+	}
+
+	for ((input, expected) in data) {
+		test("'$input' can be read as a $type") {
+			check(Tokenizer(input).canRead(type))
+		}
+
+		test("'$input' should be read as $expected") {
+			failOnRaise {
+				with(Tokenizer(input)) {
+					check(read(type).value == expected)
+				}
+			}
+		}
+
+		test("'$input' should be automatically read to a $type") {
+			check(Tokenizer(input).read() != null)
+			check(Tokenizer(input).read() is T)
+			check(Tokenizer(input).read()?.value == expected)
+		}
+	}
+}
+
+private inline fun <reified T : Token<*>> SuiteDsl.invalidTokensFor(type: TokenType.Leaf<T>, vararg data: Pair<String, Tokenizer.Failure>) {
+	for ((input, expected) in data) {
+		test("'$input' cannot be read as a $type") {
+			check(!Tokenizer(input).canRead(type))
+		}
+
+		test("'$input' should fail with '$expected'") {
+			assertRaises(expected) {
+				with(Tokenizer(input)) {
+					read(type)
+				}
+			}
+		}
+
+		test("'$input' should not be automatically read to a $type") {
+			check(Tokenizer(input).read() !is T)
+		}
+	}
+}
+
+// endregion
 
 private fun SuiteDsl.identifiers() = suite("Identifiers") {
 	val validIdentifiers = listOf(
@@ -37,7 +102,7 @@ private fun SuiteDsl.identifiers() = suite("Identifiers") {
 	suite("Validation") {
 		val invalidIdentifiers = listOf(
 			"",
-			Null.lexeme,
+			Token.Null.lexeme,
 			Token.Bool.lexemeTrue,
 			Token.Bool.lexemeFalse,
 		) + Token.Keyword.entries.map { it.lexeme }
@@ -61,133 +126,61 @@ private fun SuiteDsl.identifiers() = suite("Identifiers") {
 }
 
 private fun SuiteDsl.integers() = suite("Integers") {
-	suite("Tokenize") {
-		val cases: List<Pair<String, Long>> = listOf(
-			"0" to 0,
-			"00" to 0,
-			"000" to 0,
-			"0000" to 0,
-			"00000" to 0,
-			"000000" to 0,
-			"0000000" to 0,
-			"00000000" to 0,
-			"1" to 1,
-			"8" to 8,
-			"127" to 127,
-			"   12   " to 12,
-			"${Long.MAX_VALUE}" to Long.MAX_VALUE,
-			"-1" to -1,
-			"${Long.MIN_VALUE}" to Long.MIN_VALUE,
-			"0x0" to 0,
-			"0x1" to 1,
-			"0xff" to 0xff,
-			"0xFF" to 0xff,
-			"0x" + Long.MAX_VALUE.toString(16) to Long.MAX_VALUE,
-			"-0x1" to -1,
-			"-0xff" to -0xff,
-			"-0xFe" to -0xfe,
-		)
+	validTokensFor(
+		Token.Integer,
+		"0" to 0,
+		"00" to 0,
+		"000" to 0,
+		"0000" to 0,
+		"00000" to 0,
+		"000000" to 0,
+		"0000000" to 0,
+		"00000000" to 0,
+		"1" to 1,
+		"8" to 8,
+		"127" to 127,
+		"   12   " to 12,
+		"${Long.MAX_VALUE}" to Long.MAX_VALUE,
+		"-1" to -1,
+		"${Long.MIN_VALUE}" to Long.MIN_VALUE,
+		"0x0" to 0,
+		"0x1" to 1,
+		"0xff" to 0xff,
+		"0xFF" to 0xff,
+		"0x" + Long.MAX_VALUE.toString(16) to Long.MAX_VALUE,
+		"-0x1" to -1,
+		"-0xff" to -0xff,
+		"-0xFe" to -0xfe,
+	)
 
-		for ((input, expected) in cases) {
-			test("'$input' can be read as an integer") {
-				check(Tokenizer(input).canRead(Token.Integer))
-			}
-
-			test("'$input' should be read as $expected") {
-				failOnRaise {
-					with(Tokenizer(input)) {
-						check(readInteger() == Token.Integer(expected))
-					}
-				}
-			}
-
-			test("'$input' should be smartly read to an integer") {
-				check(Tokenizer(input).read() == Token.Integer(expected))
-			}
-		}
-
-		val failedCases: List<Pair<String, Tokenizer.Failure>> = listOf(
-			"" to Tokenizer.Failure.Exhausted(Token.Integer),
-			"-" to Tokenizer.Failure.Exhausted(Token.Integer),
-			"+" to Tokenizer.Failure.WrongTokenType(Token.Integer),
-		)
-
-		for ((input, expected) in failedCases) {
-			test("'$input' cannot be read as an integer") {
-				check(!Tokenizer(input).canRead(Token.Integer))
-			}
-
-			test("'$input' should fail with $expected") {
-				assertRaises(expected) {
-					with(Tokenizer(input)) {
-						readInteger()
-					}
-				}
-			}
-
-			test("'$input' should be not be read to an integer") {
-				check(Tokenizer(input).read() !is Token.Integer)
-			}
-		}
-	}
+	invalidTokensFor(
+		Token.Integer,
+		"" to Tokenizer.Failure.Exhausted(Token.Integer),
+		"-" to Tokenizer.Failure.Exhausted(Token.Integer),
+		"+" to Tokenizer.Failure.WrongTokenType(Token.Integer)
+	)
 }
 
 private fun SuiteDsl.booleans() = suite("Booleans") {
-	suite("Tokenize") {
-		val cases = listOf(
-			"true" to true,
-			"false" to false,
-			"   true  " to true,
-			"       false    " to false,
-		)
+	validTokensFor(
+		Token.Bool,
+		"true" to true,
+		"false" to false,
+		"   true  " to true,
+		"       false    " to false,
+	)
 
-		for ((input, expected) in cases) {
-			test("'$input' can be read as a boolean") {
-				check(Tokenizer(input).canRead(Token.Bool))
-			}
-
-			test("'$input' should be read as '$expected'") {
-				failOnRaise {
-					with(Tokenizer(input)) {
-						check(readBool() == Token.Bool(expected))
-					}
-				}
-			}
-
-			test("'$input' should be smartly read to a boolean") {
-				check(Tokenizer(input).read() == Token.Bool(expected))
-			}
-		}
-
-		val failedCases: List<Pair<String, Tokenizer.Failure>> = listOf(
-			"'true'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"\"true\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"'false'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"\"false\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"1" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-			"0x0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
-		)
-
-		for ((input, expected) in failedCases) {
-			test("'$input' cannot be read as a boolean") {
-				check(!Tokenizer(input).canRead(Token.Bool))
-			}
-
-			test("'$input' should fail with $expected") {
-				assertRaises(expected) {
-					with(Tokenizer(input)) {
-						readBool()
-					}
-				}
-			}
-
-			test("'$input' should be not be read to an integer") {
-				check(Tokenizer(input).read() !is Token.Bool)
-			}
-		}
-	}
+	invalidTokensFor(
+		Token.Bool,
+		"'true'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"\"true\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"'false'" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"\"false\"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"1" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+		"0x0" to Tokenizer.Failure.WrongTokenType(Token.Bool),
+	)
 }
 
 @Suppress("unused")
