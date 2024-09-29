@@ -203,7 +203,7 @@ class Tokenizer(
 	/**
 	 * Returns `true` if the next token is of type [type].
 	 */
-	fun <T : Token> canRead(type: TokenType.Leaf<T>): Boolean {
+	fun <T : Token<*>> canRead(type: TokenType.Leaf<T>): Boolean {
 		return when (type) {
 			Token.Bool.Companion -> canReadBool()
 			Token.Bytes.Companion -> TODO()
@@ -221,7 +221,7 @@ class Tokenizer(
 	 * Reads a value of type [type].
 	 */
 	@Suppress("UNCHECKED_CAST")
-	fun <T : Token> Raise<Failure>.read(type: TokenType.Leaf<T>): T =
+	fun <T : Token<*>> Raise<Failure>.read(type: TokenType.Leaf<T>): T =
 		when (type) {
 			Token.Bool.Companion -> readBool() as T
 			Token.Bytes.Companion -> readBytes() as T
@@ -239,7 +239,7 @@ class Tokenizer(
 	 *
 	 * Returns `null` if the source's end has been reached.
 	 */
-	fun read(): Token? {
+	fun read(): Token<*>? {
 		if (canReadBool())
 			return either { readBool() }.getOrNull()
 

@@ -26,7 +26,12 @@ import kotlin.jvm.JvmInline
  * low-level parsing.
  */
 @Suppress("ConstPropertyName")
-sealed interface Token {
+sealed interface Token<out KotlinType> {
+
+	/**
+	 * The value represented by this token, in the Kotlin type system.
+	 */
+	val value: KotlinType
 
 	/**
 	 * Serializes a token into a string representation.
@@ -41,16 +46,16 @@ sealed interface Token {
 	fun serialize(): String
 
 	@JvmInline
-	value class Identifier(val identifier: String) : Token {
+	value class Identifier(override val value: String) : Token<String> {
 
 		init {
-			require(pattern.matches(identifier)) { "Identifier '$identifier' is not a valid identifier, should validate regex $pattern" }
-			require(Keyword.byLexeme(identifier) == null) { "Identifier '$identifier' must not be a keyword" }
-			require(identifier != Null.lexeme) { "Identifier '$identifier' must not be a reserved token" }
-			require(identifier != Bool.lexemeTrue && identifier != Bool.lexemeFalse) { "Identifier '$identifier' must not be a reserved token" }
+			require(pattern.matches(value)) { "Identifier '$value' is not a valid identifier, should validate regex $pattern" }
+			require(Keyword.byLexeme(value) == null) { "Identifier '$value' must not be a keyword" }
+			require(value != Null.lexeme) { "Identifier '$value' must not be a reserved token" }
+			require(value != Bool.lexemeTrue && value != Bool.lexemeFalse) { "Identifier '$value' must not be a reserved token" }
 		}
 
-		override fun serialize(): String = identifier
+		override fun serialize(): String = value
 
 		companion object : TokenType.Leaf<Identifier> {
 			val pattern = Regex("[_a-zA-Z][_a-zA-Z0-9]*")
@@ -58,15 +63,15 @@ sealed interface Token {
 		}
 	}
 
-	sealed interface Literal : Token {
+	sealed interface Literal<out KotlinType> : Token<KotlinType> {
 
-		companion object : TokenType<Literal> {
+		companion object : TokenType<Literal<*>> {
 			override fun toString() = "Token.Literal"
 		}
 	}
 
 	@JvmInline
-	value class Integer(val value: Long) : Literal {
+	value class Integer(override val value: Long) : Literal<Long> {
 
 		override fun serialize(): String =
 			value.toString()
@@ -77,7 +82,7 @@ sealed interface Token {
 	}
 
 	@JvmInline
-	value class UnsignedInteger(val value: ULong) : Literal {
+	value class UnsignedInteger(override val value: ULong) : Literal<ULong> {
 
 		override fun serialize(): String =
 			value.toString() + "u"
@@ -88,7 +93,7 @@ sealed interface Token {
 	}
 
 	@JvmInline
-	value class Decimal(val value: Double) : Literal {
+	value class Decimal(override val value: Double) : Literal<Double> {
 
 		override fun serialize(): String =
 			value.toString()
@@ -99,7 +104,7 @@ sealed interface Token {
 	}
 
 	@JvmInline
-	value class Text(val value: String) : Literal {
+	value class Text(override val value: String) : Literal<String> {
 
 		override fun serialize(): String =
 			"\"" + value.replace("\n", "\\n") + "\""
@@ -110,7 +115,7 @@ sealed interface Token {
 	}
 
 	@JvmInline
-	value class Bytes(val value: ByteArray) : Literal {
+	value class Bytes(override val value: ByteArray) : Literal<ByteArray> {
 
 		override fun serialize(): String =
 			"b$value"
@@ -120,15 +125,15 @@ sealed interface Token {
 		}
 	}
 
-	sealed interface Reserved : Token {
+	sealed interface Reserved<out KotlinType> : Token<KotlinType> {
 
-		companion object : TokenType<Reserved> {
+		companion object : TokenType<Reserved<*>> {
 			override fun toString() = "Token.Reserved"
 		}
 	}
 
 	@JvmInline
-	value class Bool(val value: Boolean) : Reserved, Literal {
+	value class Bool(override val value: Boolean) : Reserved<Boolean>, Literal<Boolean> {
 		override fun serialize(): String =
 			if (value) lexemeTrue else lexemeFalse
 
@@ -139,7 +144,10 @@ sealed interface Token {
 		}
 	}
 
-	data object Null : Reserved, Literal, TokenType.Leaf<Null> {
+	data object Null : Reserved<Nothing?>, Literal<Nothing?>, TokenType.Leaf<Null> {
+		override val value: Nothing?
+			get() = null
+
 		override fun serialize(): String =
 			lexeme
 
@@ -150,7 +158,7 @@ sealed interface Token {
 
 	enum class Keyword(
 		val lexeme: String,
-	) : Reserved {
+	) : Reserved<String> {
 		In("in"),
 		As("as"),
 		Break("break"),
@@ -173,6 +181,9 @@ sealed interface Token {
 		@Deprecated("Elements may be added to this enum in the future, exhaustive whens are forbidden. You must provide an 'else' clause.", level = DeprecationLevel.ERROR)
 		NonExhaustive("IMPOSSIBLE VALUE");
 
+		override val value: String
+			get() = lexeme
+
 		override fun serialize(): String =
 			lexeme
 
@@ -191,11 +202,11 @@ sealed interface Token {
 /**
  * Designator for a token type.
  */
-sealed interface TokenType<out T : Token> {
+sealed interface TokenType<out T : Token<*>> {
 
 	/**
 	 * Designator for a leaf token type: a token type that has a specific representation, instead of being
 	 * a union of multiple other representations.
 	 */
-	sealed interface Leaf<out T : Token> : TokenType<T>
+	sealed interface Leaf<out T : Token<*>> : TokenType<T>
 }
