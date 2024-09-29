@@ -183,9 +183,21 @@ private fun SuiteDsl.booleans() = suite("Booleans") {
 	)
 }
 
+private fun SuiteDsl.nulls() = suite("Null") {
+	test("Null is valid") {
+		check(Tokenizer("null").read() == Token.Null)
+		check(Tokenizer("    null    ").read() == Token.Null)
+	}
+
+	for (invalid in listOf("", "'null'", "\"null\"")) test("'$invalid' is not a valid null representation") {
+		check(Tokenizer(invalid).read() != Token.Null)
+	}
+}
+
 @Suppress("unused")
 class TokenizerTest : PreparedSpec({
 	identifiers()
 	integers()
 	booleans()
+	nulls()
 })

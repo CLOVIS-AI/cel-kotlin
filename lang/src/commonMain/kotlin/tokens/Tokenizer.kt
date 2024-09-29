@@ -188,8 +188,18 @@ class Tokenizer(
 		TODO()
 	}
 
+	private fun canReadNull(): Boolean =
+		continuesWith("null")
+
 	fun Raise<Failure>.readNull(): Token.Null {
-		TODO()
+		skipWhitespace()
+
+		if (continuesWith("null")) {
+			source.skip(4)
+			return Token.Null
+		} else {
+			raise(Failure.WrongTokenType(Token.Null))
+		}
 	}
 
 	fun Raise<Failure>.readText(): Token.Text {
@@ -211,7 +221,7 @@ class Tokenizer(
 			Token.Identifier.Companion -> TODO()
 			Token.Integer.Companion -> canReadInteger()
 			Token.Keyword.Companion -> TODO()
-			Token.Null -> TODO()
+			Token.Null -> canReadNull()
 			Token.Text.Companion -> TODO()
 			Token.UnsignedInteger.Companion -> TODO()
 		}
@@ -242,6 +252,9 @@ class Tokenizer(
 	fun read(): Token<*>? {
 		if (canReadBool())
 			return either { readBool() }.getOrNull()
+
+		if (canReadNull())
+			return either { readNull() }.getOrNull()
 
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()
