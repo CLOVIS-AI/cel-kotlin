@@ -37,13 +37,13 @@ private inline fun <reified K, reified T : Token<K>> SuiteDsl.validTokensFor(typ
 					Token.Decimal.Companion -> Token.Decimal(expected as Double)
 					Token.Identifier.Companion -> Token.Identifier(expected as String)
 					Token.Integer.Companion -> Token.Integer(expected as Long)
-					Token.Keyword.Companion -> Token.Keyword.valueOf(expected as String)
+					Token.Keyword.Companion -> expected as Token.Keyword
 					Token.Null -> check(expected == null)
 					Token.Text.Companion -> Token.Text(expected as String)
 					Token.UnsignedInteger.Companion -> Token.UnsignedInteger(expected as ULong)
 				}
 			} catch (e: Throwable) {
-				throw AssertionError("Error while attempting to confirm whether '$expected' is a valid value for token type $type", e)
+				throw AssertionError("Error while attempting to confirm whether '$expected' (${expected::class}) is a valid value for token type $type", e)
 			}
 		}
 	}
@@ -194,10 +194,28 @@ private fun SuiteDsl.nulls() = suite("Null") {
 	}
 }
 
+@Suppress("DEPRECATION_ERROR")
+private fun SuiteDsl.keywords() = suite("Keywords") {
+	val keywords = Token.Keyword.all
+		.map { it.lexeme to it }
+
+	validTokensFor(
+		Token.Keyword,
+		*keywords.toTypedArray(),
+	)
+
+	invalidTokensFor(
+		Token.Keyword,
+		*keywords.map { it.first.uppercase() to Tokenizer.Failure.WrongTokenType(Token.Keyword) }.toTypedArray(),
+		Token.Keyword.NonExhaustive.lexeme to Tokenizer.Failure.WrongTokenType(Token.Keyword),
+	)
+}
+
 @Suppress("unused")
 class TokenizerTest : PreparedSpec({
 	identifiers()
 	integers()
 	booleans()
 	nulls()
+	keywords()
 })

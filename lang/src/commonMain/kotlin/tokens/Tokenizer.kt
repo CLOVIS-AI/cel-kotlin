@@ -184,8 +184,22 @@ class Tokenizer(
 		return Token.Integer(if (isNegative) -read else read)
 	}
 
+	fun canReadKeyword(): Boolean {
+		skipWhitespace()
+
+		return Token.Keyword.all.any { continuesWith(it.lexeme) }
+	}
+
 	fun Raise<Failure>.readKeyword(): Token.Keyword {
-		TODO()
+		skipWhitespace()
+
+		for (keyword in Token.Keyword.all) {
+			if (continuesWith(keyword.lexeme)) {
+				return keyword
+			}
+		}
+
+		raise(Failure.WrongTokenType(Token.Keyword))
 	}
 
 	private fun canReadNull(): Boolean =
@@ -220,7 +234,7 @@ class Tokenizer(
 			Token.Decimal.Companion -> TODO()
 			Token.Identifier.Companion -> TODO()
 			Token.Integer.Companion -> canReadInteger()
-			Token.Keyword.Companion -> TODO()
+			Token.Keyword.Companion -> canReadKeyword()
 			Token.Null -> canReadNull()
 			Token.Text.Companion -> TODO()
 			Token.UnsignedInteger.Companion -> TODO()
@@ -255,6 +269,9 @@ class Tokenizer(
 
 		if (canReadNull())
 			return either { readNull() }.getOrNull()
+
+		if (canReadKeyword())
+			return either { readKeyword() }.getOrNull()
 
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()

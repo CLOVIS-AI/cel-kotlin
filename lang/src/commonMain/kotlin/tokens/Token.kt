@@ -158,7 +158,7 @@ sealed interface Token<out KotlinType> {
 
 	enum class Keyword(
 		val lexeme: String,
-	) : Reserved<String> {
+	) : Reserved<Keyword> {
 		In("in"),
 		As("as"),
 		Break("break"),
@@ -181,14 +181,17 @@ sealed interface Token<out KotlinType> {
 		@Deprecated("Elements may be added to this enum in the future, exhaustive whens are forbidden. You must provide an 'else' clause.", level = DeprecationLevel.ERROR)
 		NonExhaustive("IMPOSSIBLE VALUE");
 
-		override val value: String
-			get() = lexeme
+		override val value: Keyword
+			get() = this
 
 		override fun serialize(): String =
 			lexeme
 
 		companion object : TokenType.Leaf<Keyword> {
-			private val byLexeme = entries
+			@Suppress("DEPRECATION_ERROR")
+			val all get() = entries.filter { it != NonExhaustive }
+
+			private val byLexeme = all
 				.associate { it.lexeme to it }
 
 			fun byLexeme(lexeme: String): Keyword? =
