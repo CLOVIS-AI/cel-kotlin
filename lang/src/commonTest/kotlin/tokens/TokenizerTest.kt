@@ -92,35 +92,55 @@ private inline fun <reified T : Token<*>> SuiteDsl.invalidTokensFor(type: TokenT
 // endregion
 
 private fun SuiteDsl.identifiers() = suite("Identifiers") {
-	val validIdentifiers = listOf(
+	val reserved: List<String> = listOf(
+		Token.Null.lexeme,
+		Token.Bool.lexemeTrue,
+		Token.Bool.lexemeFalse,
+		*Token.Keyword.all.map { it.lexeme }.toTypedArray(),
+	)
+
+	val valid: List<String> = listOf(
 		"foo",
 		"bar",
 		"a",
-		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"_",
+		"_private",
+		"__str__",
+		"Arthur",
+		"artHur",
+		"a1235",
+		"_4",
+		*reserved.map { "_$it" }.toTypedArray(),
+		*reserved.map { it.uppercase() }.toTypedArray(),
 	)
 
-	suite("Validation") {
-		val invalidIdentifiers = listOf(
-			"",
-			Token.Null.lexeme,
-			Token.Bool.lexemeTrue,
-			Token.Bool.lexemeFalse,
-		) + Token.Keyword.entries.map { it.lexeme }
+	val invalid = listOf(
+		"",
+		"5",
+		"-4",
+		*reserved.toTypedArray(),
+	)
 
-		for (valid in validIdentifiers) test("The identifier '$valid' is valid") {
-			Token.Identifier(valid) // No exception should be thrown
-		}
+	validTokensFor(
+		Token.Identifier,
+		*valid.map { it to it }.toTypedArray(),
+	)
 
-		for (invalid in invalidIdentifiers) test("The identifier '$invalid' is invalid") {
-			shouldThrow<IllegalArgumentException> {
-				Token.Identifier(invalid)
-			}
+	invalidTokensFor(
+		Token.Identifier,
+		*invalid.map { it to Tokenizer.Failure.WrongTokenType(Token.Identifier) }.toTypedArray(),
+	)
+
+	for (ident in invalid) test("The identifier '$ident' is invalid") {
+		shouldThrow<IllegalArgumentException> {
+			Token.Identifier(ident)
 		}
 	}
 
 	suite("Serialized representation") {
-		for (valid in validIdentifiers) test("String representation of '$valid'") {
-			check(Token.Identifier(valid).serialize() == valid)
+		for (ident in valid) test("String representation of '$ident'") {
+			check(Token.Identifier(ident).serialize() == ident)
 		}
 	}
 }

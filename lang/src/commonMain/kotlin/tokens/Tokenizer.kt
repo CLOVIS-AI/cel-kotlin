@@ -102,8 +102,53 @@ class Tokenizer(
 		TODO()
 	}
 
+	private fun canReadIdentifier(): Boolean {
+		if (!source.request(1))
+			return false
+
+		if (canReadNull() || canReadBool() || canReadKeyword())
+			return false
+
+		val next = source.peek().readByte().toInt()
+		return next == '_'.code || next in 'a'.code..'z'.code || next in 'A'.code..'Z'.code
+	}
+
 	fun Raise<Failure>.readIdentifier(): Token.Identifier {
-		TODO()
+		skipWhitespace()
+
+		var buffer = StringBuilder()
+
+		var nextIsFirstCharacter = true
+		while (source.request(1)) {
+			val next = source.peek().readByte().toInt()
+
+			if (next == '_'.code)
+				buffer.append('_')
+			else if (next in 'a'.code..'z'.code)
+				buffer.append(next.toChar())
+			else if (next in 'A'.code..'Z'.code)
+				buffer.append(next.toChar())
+			else if (!nextIsFirstCharacter && next in '0'.code..'9'.code)
+				buffer.append(next.toChar())
+			else
+				break
+
+			nextIsFirstCharacter = false
+			source.skip(1)
+		}
+
+		if (nextIsFirstCharacter)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		val identifier = buffer.toString()
+
+		if (identifier == Token.Null.lexeme || identifier == Token.Bool.lexemeTrue || identifier == Token.Bool.lexemeFalse)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		if (Token.Keyword.byLexeme(identifier) != null)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		return Token.Identifier(buffer.toString())
 	}
 
 	private fun canReadInteger(): Boolean {
@@ -232,7 +277,7 @@ class Tokenizer(
 			Token.Bool.Companion -> canReadBool()
 			Token.Bytes.Companion -> TODO()
 			Token.Decimal.Companion -> TODO()
-			Token.Identifier.Companion -> TODO()
+			Token.Identifier.Companion -> canReadIdentifier()
 			Token.Integer.Companion -> canReadInteger()
 			Token.Keyword.Companion -> canReadKeyword()
 			Token.Null -> canReadNull()
@@ -275,6 +320,9 @@ class Tokenizer(
 
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()
+
+		if (canReadIdentifier())
+			return either { readIdentifier() }.getOrNull()
 
 		return null
 	}
