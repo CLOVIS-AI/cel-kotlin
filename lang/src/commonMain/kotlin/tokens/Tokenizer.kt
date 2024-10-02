@@ -71,8 +71,27 @@ class Tokenizer(
 		return true
 	}
 
+	private fun canReadBool(): Boolean {
+		skipWhitespace()
+		return continuesWith("true") || continuesWith("false")
+	}
+
 	fun Raise<Failure>.readBool(): Token.Bool {
-		TODO()
+		skipWhitespace()
+
+		return when {
+			continuesWith("true") -> {
+				source.skip(4)
+				Token.Bool(true)
+			}
+
+			continuesWith("false") -> {
+				source.skip(5)
+				Token.Bool(false)
+			}
+
+			else -> raise(Failure.WrongTokenType(Token.Bool))
+		}
 	}
 
 	fun Raise<Failure>.readBytes(): Token.Bytes {
@@ -83,8 +102,53 @@ class Tokenizer(
 		TODO()
 	}
 
+	private fun canReadIdentifier(): Boolean {
+		if (!source.request(1))
+			return false
+
+		if (canReadNull() || canReadBool() || canReadKeyword())
+			return false
+
+		val next = source.peek().readByte().toInt()
+		return next == '_'.code || next in 'a'.code..'z'.code || next in 'A'.code..'Z'.code
+	}
+
 	fun Raise<Failure>.readIdentifier(): Token.Identifier {
-		TODO()
+		skipWhitespace()
+
+		var buffer = StringBuilder()
+
+		var nextIsFirstCharacter = true
+		while (source.request(1)) {
+			val next = source.peek().readByte().toInt()
+
+			if (next == '_'.code)
+				buffer.append('_')
+			else if (next in 'a'.code..'z'.code)
+				buffer.append(next.toChar())
+			else if (next in 'A'.code..'Z'.code)
+				buffer.append(next.toChar())
+			else if (!nextIsFirstCharacter && next in '0'.code..'9'.code)
+				buffer.append(next.toChar())
+			else
+				break
+
+			nextIsFirstCharacter = false
+			source.skip(1)
+		}
+
+		if (nextIsFirstCharacter)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		val identifier = buffer.toString()
+
+		if (identifier == Token.Null.lexeme || identifier == Token.Bool.lexemeTrue || identifier == Token.Bool.lexemeFalse)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		if (Token.Keyword.byLexeme(identifier) != null)
+			raise(Failure.WrongTokenType(Token.Identifier))
+
+		return Token.Identifier(buffer.toString())
 	}
 
 	private fun canReadInteger(): Boolean {
@@ -165,12 +229,36 @@ class Tokenizer(
 		return Token.Integer(if (isNegative) -read else read)
 	}
 
-	fun Raise<Failure>.readKeyword(): Token.Keyword {
-		TODO()
+	fun canReadKeyword(): Boolean {
+		skipWhitespace()
+
+		return Token.Keyword.all.any { continuesWith(it.lexeme) }
 	}
 
+	fun Raise<Failure>.readKeyword(): Token.Keyword {
+		skipWhitespace()
+
+		for (keyword in Token.Keyword.all) {
+			if (continuesWith(keyword.lexeme)) {
+				return keyword
+			}
+		}
+
+		raise(Failure.WrongTokenType(Token.Keyword))
+	}
+
+	private fun canReadNull(): Boolean =
+		continuesWith("null")
+
 	fun Raise<Failure>.readNull(): Token.Null {
-		TODO()
+		skipWhitespace()
+
+		if (continuesWith("null")) {
+			source.skip(4)
+			return Token.Null
+		} else {
+			raise(Failure.WrongTokenType(Token.Null))
+		}
 	}
 
 	fun Raise<Failure>.readText(): Token.Text {
@@ -184,15 +272,15 @@ class Tokenizer(
 	/**
 	 * Returns `true` if the next token is of type [type].
 	 */
-	fun <T : Token> canRead(type: TokenType.Leaf<T>): Boolean {
+	fun <T : Token<*>> canRead(type: TokenType.Leaf<T>): Boolean {
 		return when (type) {
-			Token.Bool.Companion -> TODO()
+			Token.Bool.Companion -> canReadBool()
 			Token.Bytes.Companion -> TODO()
 			Token.Decimal.Companion -> TODO()
-			Token.Identifier.Companion -> TODO()
+			Token.Identifier.Companion -> canReadIdentifier()
 			Token.Integer.Companion -> canReadInteger()
-			Token.Keyword.Companion -> TODO()
-			Token.Null -> TODO()
+			Token.Keyword.Companion -> canReadKeyword()
+			Token.Null -> canReadNull()
 			Token.Text.Companion -> TODO()
 			Token.UnsignedInteger.Companion -> TODO()
 		}
@@ -202,7 +290,7 @@ class Tokenizer(
 	 * Reads a value of type [type].
 	 */
 	@Suppress("UNCHECKED_CAST")
-	fun <T : Token> Raise<Failure>.read(type: TokenType.Leaf<T>): T =
+	fun <T : Token<*>> Raise<Failure>.read(type: TokenType.Leaf<T>): T =
 		when (type) {
 			Token.Bool.Companion -> readBool() as T
 			Token.Bytes.Companion -> readBytes() as T
@@ -220,9 +308,21 @@ class Tokenizer(
 	 *
 	 * Returns `null` if the source's end has been reached.
 	 */
-	fun read(): Token? {
+	fun read(): Token<*>? {
+		if (canReadBool())
+			return either { readBool() }.getOrNull()
+
+		if (canReadNull())
+			return either { readNull() }.getOrNull()
+
+		if (canReadKeyword())
+			return either { readKeyword() }.getOrNull()
+
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()
+
+		if (canReadIdentifier())
+			return either { readIdentifier() }.getOrNull()
 
 		return null
 	}
