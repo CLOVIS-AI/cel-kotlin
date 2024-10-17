@@ -21,6 +21,7 @@ import arrow.core.raise.either
 import arrow.core.raise.ensure
 import kotlinx.io.Buffer
 import kotlinx.io.Source
+import kotlin.math.pow
 
 /**
  * Helper to convert a textual representation of a CEL expression into its [tokens][Token].
@@ -41,6 +42,18 @@ class Tokenizer(
 		0xC, // '\f'
 		'\r'.code,
 	)
+
+	private val exponentCharacters = arrayOf(
+		'e'.code,
+		'E'.code,
+	)
+
+	private val plusMinusCharacters = arrayOf(
+		'+'.code,
+		'-'.code,
+	)
+
+	private val digitsCharacters = '0'.code..'9'.code
 
 	private fun skipWhitespace() {
 		var whitespaceCounter: Long = 0
@@ -98,8 +111,238 @@ class Tokenizer(
 		TODO()
 	}
 
+	private fun canReadDecimal(): Boolean {
+		skipWhitespace()
+
+		val peek = source.peek()
+
+		// -?
+		if (peek.request(1) && peek.peek().readByte().toInt() == '-'.code) {
+			peek.skip(1)
+		}
+
+		// DIGIT*
+		var hasFirstDigits = false
+		while (peek.request(1) && peek.peek().readByte().toInt() in digitsCharacters) {
+			peek.skip(1)
+			hasFirstDigits = true
+		}
+
+		if (hasFirstDigits) {
+			// At this point, we could be either:
+			//    -? DIGIT+ {HERE} . DIGIT+ EXPONENT?
+			//    -? DIGIT+ {HERE} EXPONENT
+
+			if (peek.request(1) && peek.peek().readByte().toInt() == '.'.code) {
+				peek.skip(1)
+
+				// -? DIGIT+ . {HERE} DIGIT+ EXPONENT?
+
+				// DIGIT+
+				var hasSecondDigits = false
+				while (peek.request(1) && peek.peek().readByte().toInt() in digitsCharacters) {
+					peek.skip(1)
+					hasSecondDigits = true
+				}
+				if (!hasSecondDigits) {
+					return false
+				}
+
+				// [eE]
+				if (!peek.request(1) || peek.peek().readByte().toInt() !in exponentCharacters) {
+					// If there's no exponent part, this is a valid decimal!
+					return true
+				} else {
+					peek.skip(1)
+				}
+
+				// [+-]?
+				if (peek.request(1) && peek.peek().readByte().toInt() in plusMinusCharacters) {
+					peek.skip(1)
+				}
+
+				// DIGIT+
+				return peek.request(1) && peek.readByte().toInt() in digitsCharacters
+			} else {
+				// -? DIGIT+ {HERE} EXPONENT
+
+				// [eE]
+				if (!peek.request(1) || peek.readByte().toInt() !in exponentCharacters) {
+					return false
+				}
+
+				// [+-]?
+				if (peek.request(1) && peek.peek().readByte().toInt() in plusMinusCharacters) {
+					peek.skip(1)
+				}
+
+				return peek.request(1) && peek.readByte().toInt() in digitsCharacters
+			}
+		} else {
+			// At this point, we could be either:
+			//    -? {HERE} . DIGIT+ EXPONENT?
+
+			// .
+			if (!peek.request(1) || peek.readByte().toInt() != '.'.code) {
+				return false
+			}
+
+			// DIGIT+
+			var hasDecimalPart = false
+			while (peek.request(1) && peek.peek().readByte().toInt() in digitsCharacters) {
+				peek.skip(1)
+				hasDecimalPart = true
+			}
+			if (!hasDecimalPart) {
+				return false
+			}
+
+			// [eE]
+			if (!peek.request(1) || peek.peek().readByte().toInt() !in exponentCharacters) {
+				// If there's no exponent part, this is a valid decimal!
+				return true
+			} else {
+				peek.skip(1)
+			}
+
+			// [+-]?
+			if (peek.request(1) && peek.peek().readByte().toInt() in plusMinusCharacters) {
+				peek.skip(1)
+			}
+
+			// DIGIT+
+			return peek.request(1) && peek.readByte().toInt() in digitsCharacters
+		}
+	}
+
+	private fun Raise<Failure>.readDigits(mandatory: Boolean = true): Long? {
+		if (!source.request(1)) {
+			if (mandatory) {
+				raise(Failure.Exhausted(Token.Integer))
+			} else {
+				return null
+			}
+		}
+
+		var result = 0L
+		var readAtLeastOne = false
+
+		while (source.request(1)) {
+			val next = source.peek().readByte()
+
+			if (next in digitsCharacters) {
+				readAtLeastOne = true
+				result *= 10
+				result += next - '0'.code
+			} else {
+				break
+			}
+
+			source.skip(1)
+		}
+
+		ensure(readAtLeastOne || !mandatory) { Failure.WrongTokenType(Token.Decimal) }
+		return result
+	}
+
+	private fun Source.readExponentSign(): Int =
+		when (source.peek().readByte().toInt()) {
+			'+'.code -> {
+				source.skip(1)
+				1
+			}
+
+			'-'.code -> {
+				source.skip(1)
+				-1
+			}
+
+			else -> 1
+		}
+
+	private fun convertToDecimalPart(initial: Long): Double {
+		var initial = initial
+		var decimalPart = 0.0
+		while (initial > 0) {
+			decimalPart += initial % 10
+			decimalPart /= 10
+			initial /= 10
+		}
+		check(decimalPart <= 1.0) { "Invalid intermediate computation: the decimal part should be read as a number smaller than 1. The decimal part $this was read as $decimalPart." }
+		return decimalPart
+	}
+
 	fun Raise<Failure>.readDecimal(): Token.Decimal {
-		TODO()
+		skipWhitespace()
+
+		val isNegative = continuesWith('-')
+		if (isNegative)
+			source.skip(1) // Skip the '-'
+		val signMultiplier = if (isNegative) -1 else 1
+
+		val firstDigit = readDigits(mandatory = false)
+
+		if (firstDigit != null) {
+			// At this point, we could be either:
+			//    -? DIGIT+ {HERE} . DIGIT+ EXPONENT?
+			//    -? DIGIT+ {HERE} EXPONENT
+
+			if (continuesWith(".")) {
+				source.skip(1)
+
+				// -? DIGIT+ . {HERE} DIGIT+ EXPONENT?
+				var decimalPart = convertToDecimalPart(readDigits()!!)
+
+				val decodedDecimal = signMultiplier * (firstDigit.toDouble() + decimalPart)
+
+				if (continuesWith('e') || continuesWith('E')) {
+					source.skip(1)
+
+					ensure(source.request(1)) { Failure.Exhausted(Token.Decimal) }
+					val exponentSignMultiplier = source.readExponentSign()
+
+					val exponent = readDigits()!!.toDouble()
+
+					return Token.Decimal(decodedDecimal * 10.0.pow(exponent * exponentSignMultiplier))
+				} else {
+					return Token.Decimal(decodedDecimal)
+				}
+			} else {
+				// -? DIGIT+ {HERE} EXPONENT
+
+				ensure(source.request(1)) { Failure.Exhausted(Token.Decimal) }
+				ensure(continuesWith('e') || continuesWith('E')) { Failure.WrongTokenType(Token.Decimal) }
+				source.skip(1)
+
+				ensure(source.request(1)) { Failure.Exhausted(Token.Decimal) }
+				val exponentSignMultiplier = source.readExponentSign()
+
+				val exponent = readDigits()!!.toDouble()
+
+				return Token.Decimal(signMultiplier * firstDigit.toDouble() * 10.0.pow(exponent * exponentSignMultiplier))
+			}
+		} else {
+			// At this point, we could be either:
+			//    -? {HERE} . DIGIT+ EXPONENT?
+
+			ensure(source.request(1)) { Failure.Exhausted(Token.Decimal) }
+			ensure(source.readByte().toInt() == '.'.code) { Failure.WrongTokenType(Token.Decimal) }
+
+			val secondDigit = convertToDecimalPart(readDigits()!!)
+
+			if (continuesWith('e') || continuesWith('E')) {
+				source.skip(1)
+
+				ensure(source.request(1)) { Failure.Exhausted(Token.Decimal) }
+				val exponentSignMultiplier = source.readExponentSign()
+
+				val exponent = readDigits()!!.toDouble()
+
+				return Token.Decimal(secondDigit * 10.0.pow(exponent * exponentSignMultiplier))
+			} else {
+				return Token.Decimal(secondDigit)
+			}
+		}
 	}
 
 	private fun canReadIdentifier(): Boolean {
@@ -276,7 +519,7 @@ class Tokenizer(
 		return when (type) {
 			Token.Bool.Companion -> canReadBool()
 			Token.Bytes.Companion -> TODO()
-			Token.Decimal.Companion -> TODO()
+			Token.Decimal.Companion -> canReadDecimal()
 			Token.Identifier.Companion -> canReadIdentifier()
 			Token.Integer.Companion -> canReadInteger()
 			Token.Keyword.Companion -> canReadKeyword()
@@ -317,6 +560,9 @@ class Tokenizer(
 
 		if (canReadKeyword())
 			return either { readKeyword() }.getOrNull()
+
+		if (canReadDecimal())
+			return either { readDecimal() }.getOrNull()
 
 		if (canReadInteger())
 			return either { readInteger() }.getOrNull()

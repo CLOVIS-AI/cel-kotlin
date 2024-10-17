@@ -181,6 +181,38 @@ private fun SuiteDsl.integers() = suite("Integers") {
 	)
 }
 
+private fun SuiteDsl.decimals() = suite("Decimals") {
+	validTokensFor(
+		Token.Decimal,
+		"0.0" to 0.0,
+		"1.0" to 1.0,
+		"0.1" to 0.1,
+		".2" to 0.2,
+		"-0.0" to -0.0,
+		"-1.0" to -1.0,
+		"-0.1" to -0.1,
+		"165678413.1264897" to 165678413.1264897,
+		"-126.2678" to -126.2678,
+		"1.0e2" to 1.0e2,
+		"9.3E4" to 9.3e4,
+		"4e78" to 4.0e78,
+		"-7.3e4" to -7.3e4,
+		"-7.3 e4" to -7.3, // 'e4' is not part of the decimal if there is whitespace
+		"7.3e-3" to 7.3e-3,
+		"7.3-4" to 7.3, // '-4' is not part of the decimal
+		".97e4" to 0.97e4,
+		"9.4e+7" to 9.4e7,
+	)
+
+	invalidTokensFor(
+		Token.Decimal,
+		"a" to Tokenizer.Failure.WrongTokenType(Token.Decimal),
+		"0.a" to Tokenizer.Failure.WrongTokenType(Token.Decimal),
+		"-a" to Tokenizer.Failure.WrongTokenType(Token.Decimal),
+		"7.3e" to Tokenizer.Failure.Exhausted(Token.Decimal),
+	)
+}
+
 private fun SuiteDsl.booleans() = suite("Booleans") {
 	validTokensFor(
 		Token.Bool,
@@ -235,6 +267,7 @@ private fun SuiteDsl.keywords() = suite("Keywords") {
 class TokenizerTest : PreparedSpec({
 	identifiers()
 	integers()
+	decimals()
 	booleans()
 	nulls()
 	keywords()
