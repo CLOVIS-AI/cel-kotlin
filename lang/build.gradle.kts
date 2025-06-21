@@ -48,9 +48,9 @@ kotlin {
 	}
 
 	sourceSets.commonTest.dependencies {
-		implementation(libs.prepared)
-		implementation(libs.prepared.arrow)
-		implementation(libs.prepared.parameterize)
+		implementation(libsCommon.opensavvy.prepared.kotest)
+		implementation(libsCommon.opensavvy.prepared.arrow)
+		implementation(libsCommon.opensavvy.prepared.parameterize)
 	}
 }
 
