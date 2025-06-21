@@ -2,7 +2,7 @@
 
 [versions]
 kotlinx-io = "0.5.4"     # https://github.com/Kotlin/kotlinx-io/releases
-arrow = "1.2.4"          # https://github.com/arrow-kt/arrow/releases
+arrow = "2.1.2"          # https://github.com/arrow-kt/arrow/releases
 
 [plugins]
 
