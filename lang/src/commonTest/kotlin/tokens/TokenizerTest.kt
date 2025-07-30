@@ -19,10 +19,9 @@
 package opensavvy.cel.lang.tokens
 
 import arrow.core.raise.ExperimentalTraceApi
-import io.kotest.assertions.throwables.shouldThrow
 import opensavvy.prepared.compat.arrow.core.assertRaises
 import opensavvy.prepared.compat.arrow.core.failOnRaise
-import opensavvy.prepared.runner.kotest.PreparedSpec
+import opensavvy.prepared.runner.testballoon.preparedSuite
 import opensavvy.prepared.suite.SuiteDsl
 
 // region Utilities
@@ -133,9 +132,10 @@ private fun SuiteDsl.identifiers() = suite("Identifiers") {
 	)
 
 	for (ident in invalid) test("The identifier '$ident' is invalid") {
-		shouldThrow<IllegalArgumentException> {
+		try {
 			Token.Identifier(ident)
-		}
+			error("Expected to throw IllegalArgumentException")
+		} catch (e: IllegalArgumentException) {}
 	}
 
 	suite("Serialized representation") {
@@ -264,11 +264,11 @@ private fun SuiteDsl.keywords() = suite("Keywords") {
 }
 
 @Suppress("unused")
-class TokenizerTest : PreparedSpec({
+val TokenizerTest by preparedSuite {
 	identifiers()
 	integers()
 	decimals()
 	booleans()
 	nulls()
 	keywords()
-})
+}
